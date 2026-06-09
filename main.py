@@ -275,11 +275,7 @@ class ChatHeadApp:
     def _run_async_loop(self):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-
-        creds = load_credentials()
-        if creds:
-            self._loop.create_task(self._run_telegram())
-
+        self._loop.create_task(self._run_telegram())
         self._loop.run_forever()
 
     def run(self):
@@ -289,17 +285,9 @@ class ChatHeadApp:
         while self._loop is None:
             pass
 
-        if not self._logged_in:
-            QTimer.singleShot(500, self._check_login)
-
         exit_code = self.app.exec()
         self._cleanup()
         sys.exit(exit_code)
-
-    def _check_login(self):
-        creds = load_credentials()
-        if not creds:
-            self._show_login_dialog()
 
     def _cleanup(self):
         if self._loop and not self._loop.is_closed():
