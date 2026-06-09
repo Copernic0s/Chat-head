@@ -199,8 +199,10 @@ class ChatHeadApp:
             handler = EventHandler(lambda d: self.bridge.message_received.emit(d))
             self.tg_client.set_message_handler(handler.handle)
 
-            self.bridge.connected.emit()
-            await self.tg_client.start(phone, self._handle_telegram_code)
+            await self.tg_client.start(
+                phone, self._handle_telegram_code,
+                on_connected=lambda: self.bridge.connected.emit()
+            )
 
         except Exception as e:
             logger.error(f"Telegram error: {e}")

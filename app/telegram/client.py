@@ -27,7 +27,7 @@ class TGClient:
     def is_connected(self) -> bool:
         return self._connected
 
-    async def start(self, phone: str, code_callback: Callable[[], Awaitable[str]]):
+    async def start(self, phone: str, code_callback: Callable[[], Awaitable[str]], on_connected: Optional[Callable] = None):
         creds = load_credentials()
         if not creds:
             raise RuntimeError("No credentials configured")
@@ -54,6 +54,8 @@ class TGClient:
                 await self._client.sign_in(password=password)
 
         self._connected = True
+        if on_connected:
+            on_connected()
         logger.info("Connected to Telegram")
 
         if self._message_handler:
