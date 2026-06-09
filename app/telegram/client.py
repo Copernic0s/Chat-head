@@ -105,7 +105,11 @@ class TGClient:
     async def get_messages(self, chat_id: int, limit: int = 50):
         if not self._client or not self._connected:
             return []
-        messages = await self._client.get_messages(chat_id, limit=limit)
+        try:
+            messages = await self._client.get_messages(chat_id, limit=limit)
+        except ValueError:
+            entity = await self._client.get_entity(chat_id)
+            messages = await self._client.get_messages(entity, limit=limit)
         result = []
         for m in messages:
             result.append({
@@ -121,7 +125,11 @@ class TGClient:
     async def send_message(self, chat_id: int, text: str):
         if not self._client or not self._connected:
             return
-        await self._client.send_message(chat_id, text)
+        try:
+            await self._client.send_message(chat_id, text)
+        except ValueError:
+            entity = await self._client.get_entity(chat_id)
+            await self._client.send_message(entity, text)
 
     async def disconnect(self):
         if self._client:
