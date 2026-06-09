@@ -296,15 +296,15 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         avatar = QLabel(chat.title[0].upper() if chat.title else "?")
-        avatar.setFixedSize(40, 40)
+        avatar.setFixedSize(44, 44)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         avatar.setStyleSheet(f"""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                 stop:0 #0a84ff, stop:1 #0055aa);
             color: white;
-            font-size: 17px;
+            font-size: 18px;
             font-weight: 700;
-            border-radius: 20px;
+            border-radius: 22px;
         """)
         layout.addWidget(avatar)
 

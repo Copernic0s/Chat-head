@@ -1,9 +1,9 @@
-from PyQt6.QtWidgets import QWidget, QLabel, QMenu, QGraphicsDropShadowEffect, QGraphicsBlurEffect
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QPropertyAnimation, QTimer, QEasingCurve
+from PyQt6.QtWidgets import QWidget, QLabel, QMenu
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QPropertyAnimation, QEasingCurve
 from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import (
     QPainter, QColor, QRadialGradient, QFont, QMouseEvent,
-    QPaintEvent, QLinearGradient, QPen, QBrush,
+    QPaintEvent, QPen, QBrush,
 )
 from .styles import DANGER, FONT
 
@@ -20,22 +20,13 @@ class BubbleWidget(QWidget):
         self._drag_pos = QPoint()
         self._dragging = False
         self._unread = 0
-        self._pulse = 0.0
-        self._pulse_dir = 1
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(self.SIZE + 8, self.SIZE + 8)
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setColor(QColor(10, 132, 255, 100))
-        shadow.setOffset(0, 4)
-        self.setGraphicsEffect(shadow)
+        self.setFixedSize(self.SIZE, self.SIZE)
 
         self.badge = QLabel("", self)
         self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -55,24 +46,9 @@ class BubbleWidget(QWidget):
         self.badge.adjustSize()
         self.badge.hide()
 
-        self._pulse_timer = QTimer(self)
-        self._pulse_timer.timeout.connect(self._update_pulse)
-        self._pulse_timer.start(50)
-
         self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
         self.fade_anim.setDuration(300)
         self.fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-    def _update_pulse(self):
-        if self._unread > 0:
-            self._pulse += 0.04 * self._pulse_dir
-            if self._pulse > 1.0:
-                self._pulse = 1.0
-                self._pulse_dir = -1
-            elif self._pulse < 0.0:
-                self._pulse = 0.0
-                self._pulse_dir = 1
-            self.update()
 
     def set_unread(self, count: int):
         self._unread = count
@@ -84,8 +60,6 @@ class BubbleWidget(QWidget):
                 0,
             )
             self.badge.show()
-            self._pulse = 0.0
-            self._pulse_dir = 1
         else:
             self.badge.hide()
         self.badge_updated.emit(count)
@@ -105,13 +79,10 @@ class BubbleWidget(QWidget):
         painter.setPen(QPen(QColor(255, 255, 255, 30), 1.5))
         painter.drawEllipse(QPointF(cx, cy), r, r)
 
-        glow = QRadialGradient(cx, cy, r * 1.8)
-        alpha = int(40 + 30 * self._pulse)
-        glow.setColorAt(0.0, QColor(10, 132, 255, alpha))
-        glow.setColorAt(1.0, QColor(10, 132, 255, 0))
-        painter.setBrush(QBrush(glow))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(cx, cy), r * 1.4, r * 1.4)
+        border_pen = QPen(QColor(255, 255, 255, 35), 1.5)
+        painter.setPen(border_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QPointF(cx, cy), r - 1, r - 1)
 
         highlight = QRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.8)
         highlight.setColorAt(0.0, QColor(255, 255, 255, 50))

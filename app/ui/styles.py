@@ -23,10 +23,10 @@ PANEL_STYLE = f"""
         padding: 4px 0;
     }}
     QListWidget::item {{
-        padding: 10px 14px;
+        padding: 14px 16px;
         border: none;
         border-radius: 10px;
-        margin: 1px 8px;
+        margin: 2px 8px;
     }}
     QListWidget::item:hover {{
         background: {GLASS_HIGHLIGHT};
