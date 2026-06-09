@@ -3,8 +3,8 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QTextEdit, QScrollArea, QFrame,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve, QPoint, QEvent
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve, QPoint, QEvent, QRect
+from PyQt6.QtGui import QKeyEvent, QPainter, QColor, QPen, QFont
 from datetime import datetime
 from ..storage.models import Chat, Message
 
@@ -13,10 +13,26 @@ PANEL_WIDTH = 380
 PANEL_HEIGHT = 550
 
 
+class RoundedWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bg_color = QColor("#1e1e1e")
+        self._border_color = QColor("#333333")
+        self._radius = 12
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(self._border_color, 1))
+        painter.setBrush(self._bg_color)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), self._radius, self._radius)
+
+
 class MessageBubble(QFrame):
     def __init__(self, text: str, is_out: bool, time: datetime, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet("background: transparent;")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 2, 12, 2)
@@ -52,7 +68,7 @@ class MessageBubble(QFrame):
         layout.addWidget(bubble)
 
         time_label = QLabel(time.strftime("%H:%M"))
-        time_label.setStyleSheet("color: #888; font-size: 10px; padding: 2px 8px 0 8px;")
+        time_label.setStyleSheet("color: #888; font-size: 10px; padding: 2px 8px 0 8px; background: transparent;")
         time_label.setAlignment(
             Qt.AlignmentFlag.AlignRight if is_out else Qt.AlignmentFlag.AlignLeft
         )
@@ -77,33 +93,36 @@ class ChatPanel(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-
         self.setFixedSize(PANEL_WIDTH, PANEL_HEIGHT)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("""
-            ChatPanel {
-                background-color: #1e1e1e;
-                border: 1px solid #333333;
-                border-radius: 12px;
-            }
-        """)
-
         self._build_ui()
 
         self._anim = QPropertyAnimation(self, b"pos")
         self._anim.setDuration(250)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#333333"), 1))
+        painter.setBrush(QColor("#1e1e1e"))
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
 
+        inner = QWidget()
+        inner.setStyleSheet("background-color: #1e1e1e;")
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(0)
+
         header = self._build_header()
-        layout.addWidget(header)
+        inner_layout.addWidget(header)
 
         self._stack = QWidget()
-        self._stack.setStyleSheet("background-color: transparent;")
+        self._stack.setStyleSheet("background-color: #1e1e1e;")
         self._stack_layout = QVBoxLayout(self._stack)
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         self._stack_layout.setSpacing(0)
@@ -130,7 +149,7 @@ class ChatPanel(QWidget):
         self._stack_layout.addWidget(self._chat_list)
 
         self._chat_view = QWidget()
-        self._chat_view.setStyleSheet("background-color: transparent;")
+        self._chat_view.setStyleSheet("background-color: #1e1e1e;")
         chat_view_layout = QVBoxLayout(self._chat_view)
         chat_view_layout.setContentsMargins(0, 0, 0, 0)
         chat_view_layout.setSpacing(0)
@@ -206,17 +225,18 @@ class ChatPanel(QWidget):
         self._chat_view.hide()
         self._stack_layout.addWidget(self._chat_view)
 
-        layout.addWidget(self._stack, 1)
+        inner_layout.addWidget(self._stack, 1)
+        layout.addWidget(inner)
 
     def _build_header(self) -> QWidget:
         header = QWidget()
         header.setFixedHeight(44)
-        header.setStyleSheet("background-color: #252526; border-radius: 12px 12px 0 0;")
+        header.setStyleSheet("background-color: #252526;")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(12, 0, 12, 0)
 
         title = QLabel("Chat Head")
-        title.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold;")
+        title.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold; background: transparent;")
         hl.addWidget(title)
         hl.addStretch()
 
@@ -270,6 +290,7 @@ class ChatPanel(QWidget):
 
         avatar = QLabel(chat.title[0].upper() if chat.title else "?")
         avatar.setFixedSize(40, 40)
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         avatar.setStyleSheet("""
             background-color: #094771;
             color: white;
@@ -277,7 +298,6 @@ class ChatPanel(QWidget):
             font-weight: bold;
             border-radius: 20px;
         """)
-        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(avatar)
 
         text_layout = QVBoxLayout()
@@ -381,21 +401,24 @@ class ChatPanel(QWidget):
         self.closed.emit()
 
     def show_panel(self, target_pos: QPoint):
-        start_pos = QPoint(target_pos.x() + 400, target_pos.y())
-        self.move(start_pos)
+        self.move(target_pos)
         self.show()
         self.raise_()
-        self._anim.setStartValue(start_pos)
-        self._anim.setEndValue(target_pos)
-        self._anim.start()
+        self.setWindowOpacity(0.0)
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_anim.setDuration(200)
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.start()
 
     def hide_panel(self):
-        end_pos = QPoint(self.x() + 400, self.y())
-        self._anim.setStartValue(self.pos())
-        self._anim.setEndValue(end_pos)
-        self._anim.finished.connect(self._on_hide_finished)
-        self._anim.start()
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_anim.setDuration(150)
+        self._fade_anim.setStartValue(1.0)
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.finished.connect(self._on_hide_finished)
+        self._fade_anim.start()
 
     def _on_hide_finished(self):
         self.hide()
-        self._anim.finished.disconnect(self._on_hide_finished)
+        self._fade_anim.finished.disconnect(self._on_hide_finished)
