@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QMenu
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QPropertyAnimation, QEasingCurve
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QPropertyAnimation, QEasingCurve, QRect, QPointF
+from PyQt6.QtGui import QRegion
 from PyQt6.QtGui import (
     QPainter, QColor, QRadialGradient, QFont, QMouseEvent,
     QPaintEvent, QPen, QBrush,
@@ -27,6 +27,8 @@ class BubbleWidget(QWidget):
             | Qt.WindowType.Tool
         )
         self.setFixedSize(self.SIZE, self.SIZE)
+        mask_region = QRegion(0, 0, self.SIZE, self.SIZE, QRegion.RegionType.Ellipse)
+        self.setMask(mask_region)
 
         self.badge = QLabel("", self)
         self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
