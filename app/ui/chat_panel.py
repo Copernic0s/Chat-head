@@ -4,28 +4,13 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve, QPoint, QEvent, QRect
-from PyQt6.QtGui import QKeyEvent, QPainter, QColor, QPen, QFont
+from PyQt6.QtGui import QKeyEvent
 from datetime import datetime
 from ..storage.models import Chat, Message
 
 
 PANEL_WIDTH = 380
 PANEL_HEIGHT = 550
-
-
-class RoundedWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._bg_color = QColor("#1e1e1e")
-        self._border_color = QColor("#333333")
-        self._radius = 12
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(self._border_color, 1))
-        painter.setBrush(self._bg_color)
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), self._radius, self._radius)
 
 
 class MessageBubble(QFrame):
@@ -94,32 +79,28 @@ class ChatPanel(QWidget):
             | Qt.WindowType.Tool
         )
         self.setFixedSize(PANEL_WIDTH, PANEL_HEIGHT)
+        self.setStyleSheet("background-color: #1e1e1e;")
         self._build_ui()
-
-        self._anim = QPropertyAnimation(self, b"pos")
-        self._anim.setDuration(250)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#333333"), 1))
-        painter.setBrush(QColor("#1e1e1e"))
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        inner = QWidget()
-        inner.setStyleSheet("background-color: #1e1e1e;")
-        inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-        inner_layout.setSpacing(0)
+        self._container = QFrame()
+        self._container.setObjectName("panelFrame")
+        self._container.setStyleSheet("""
+            QFrame#panelFrame {
+                background-color: #1e1e1e;
+                border: 1px solid #333;
+            }
+        """)
+        container_layout = QVBoxLayout(self._container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
         header = self._build_header()
-        inner_layout.addWidget(header)
+        container_layout.addWidget(header)
 
         self._stack = QWidget()
         self._stack.setStyleSheet("background-color: #1e1e1e;")
@@ -225,8 +206,8 @@ class ChatPanel(QWidget):
         self._chat_view.hide()
         self._stack_layout.addWidget(self._chat_view)
 
-        inner_layout.addWidget(self._stack, 1)
-        layout.addWidget(inner)
+        container_layout.addWidget(self._stack, 1)
+        layout.addWidget(self._container, 1)
 
     def _build_header(self) -> QWidget:
         header = QWidget()
@@ -401,24 +382,11 @@ class ChatPanel(QWidget):
         self.closed.emit()
 
     def show_panel(self, target_pos: QPoint):
+        self.setWindowOpacity(1.0)
         self.move(target_pos)
         self.show()
         self.raise_()
-        self.setWindowOpacity(0.0)
-        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
-        self._fade_anim.setDuration(200)
-        self._fade_anim.setStartValue(0.0)
-        self._fade_anim.setEndValue(1.0)
-        self._fade_anim.start()
+        self.activateWindow()
 
     def hide_panel(self):
-        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
-        self._fade_anim.setDuration(150)
-        self._fade_anim.setStartValue(1.0)
-        self._fade_anim.setEndValue(0.0)
-        self._fade_anim.finished.connect(self._on_hide_finished)
-        self._fade_anim.start()
-
-    def _on_hide_finished(self):
         self.hide()
-        self._fade_anim.finished.disconnect(self._on_hide_finished)
