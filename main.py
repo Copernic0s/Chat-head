@@ -19,6 +19,7 @@ from app.telegram.auth import load_credentials, save_credentials
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
 )
 logger = logging.getLogger("main")
 
@@ -27,8 +28,9 @@ class SignalBridge(QObject):
     message_received = pyqtSignal(dict)
     dialogs_loaded = pyqtSignal(list)
     messages_loaded = pyqtSignal(list)
-    login_required = pyqtSignal()
     connected = pyqtSignal()
+    code_requested = pyqtSignal(object)
+    login_requested = pyqtSignal()
 
 
 class ChatHeadApp:
@@ -40,10 +42,9 @@ class ChatHeadApp:
         self.bridge = SignalBridge()
         self.tg_client = TGClient()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
         self._chats: dict[int, Chat] = {}
         self._messages: dict[int, list[Message]] = {}
-        self._logged_in = False
+        self._code_future: Optional[asyncio.Future] = None
 
         self.bubble = BubbleWidget()
         self.panel = ChatPanel()
@@ -59,8 +60,9 @@ class ChatHeadApp:
         self.bridge.message_received.connect(self._on_telegram_message)
         self.bridge.dialogs_loaded.connect(self._on_dialogs_loaded)
         self.bridge.messages_loaded.connect(self._on_messages_loaded)
-        self.bridge.login_required.connect(self._show_login_dialog)
         self.bridge.connected.connect(self._on_connected)
+        self.bridge.code_requested.connect(self._show_code_dialog)
+        self.bridge.login_requested.connect(self._show_login_dialog)
 
         self.panel.closed.connect(self._close_panel)
         self.panel.chat_selected.connect(self._on_chat_selected)
@@ -109,51 +111,45 @@ class ChatHeadApp:
         if chat_id in self._messages:
             self.panel.display_messages(self._messages[chat_id])
         else:
-            asyncio.run_coroutine_threadsafe(
-                self._do_fetch_messages(chat_id), self._loop
-            )
+            self._async(self._do_fetch_messages(chat_id))
 
     async def _do_fetch_messages(self, chat_id: int):
         try:
             raw_msgs = await self.tg_client.get_messages(chat_id)
             msgs = [
-                Message(
-                    id=m["id"],
-                    chat_id=m["chat_id"],
-                    sender_id=m["sender_id"],
-                    text=m["text"],
-                    date=m["date"],
-                    out=m["out"],
-                )
+                Message(id=m["id"], chat_id=m["chat_id"],
+                        sender_id=m["sender_id"], text=m["text"],
+                        date=m["date"], out=m["out"])
                 for m in raw_msgs
             ]
             self._messages[chat_id] = msgs
             self.bridge.messages_loaded.emit(msgs)
         except Exception as e:
-            logger.error(f"Failed to fetch messages: {e}")
+            logger.error(f"Failed to fetch messages: {e}", exc_info=True)
 
     async def _do_fetch_dialogs(self):
         try:
+            logger.info("Fetching dialogs...")
             raw_dialogs = await self.tg_client.get_dialogs()
+            logger.info(f"Loaded {len(raw_dialogs)} dialogs")
             self.bridge.dialogs_loaded.emit(raw_dialogs)
         except Exception as e:
-            logger.error(f"Failed to fetch dialogs: {e}")
+            logger.error(f"Failed to fetch dialogs: {e}", exc_info=True)
 
     def _on_dialogs_loaded(self, raw_dialogs: list):
         self._chats.clear()
         for d in raw_dialogs:
             chat = Chat(
-                id=d["id"],
-                title=d["title"],
+                id=d["id"], title=d["title"],
                 last_message=d["last_message"],
                 last_message_time=d["last_message_date"],
                 unread_count=d["unread"],
             )
             self._chats[chat.id] = chat
-
         total_unread = sum(c.unread_count for c in self._chats.values())
         self.bubble.set_unread(total_unread)
         self.panel.set_chats(list(self._chats.values()))
+        logger.info(f"Chat list updated with {len(self._chats)} chats")
 
     def _on_messages_loaded(self, msgs: list):
         if msgs:
@@ -161,18 +157,13 @@ class ChatHeadApp:
 
     def _on_telegram_message(self, data: dict):
         msg = Message(
-            id=data["id"],
-            chat_id=data["chat_id"],
-            sender_id=data["sender_id"],
-            text=data["text"],
-            date=data["date"],
-            out=data["out"],
+            id=data["id"], chat_id=data["chat_id"],
+            sender_id=data["sender_id"], text=data["text"],
+            date=data["date"], out=data["out"],
         )
-
         if msg.chat_id not in self._messages:
             self._messages[msg.chat_id] = []
         self._messages[msg.chat_id].append(msg)
-
         if msg.chat_id in self._chats:
             chat = self._chats[msg.chat_id]
             chat.last_message = msg.text
@@ -182,47 +173,20 @@ class ChatHeadApp:
             total = sum(c.unread_count for c in self._chats.values())
             self.bubble.set_unread(total)
             self.panel.set_chats(list(self._chats.values()))
-
         if self.state.active_chat_id == msg.chat_id and self.panel.isVisible():
             self.panel.add_message(msg)
 
-    async def _run_telegram(self):
-        try:
-            self._loop = asyncio.get_running_loop()
-
-            creds = load_credentials()
-            if not creds:
-                self.bridge.login_required.emit()
-                return
-
-            phone = creds.get("phone", "")
-            handler = EventHandler(lambda d: self.bridge.message_received.emit(d))
-            self.tg_client.set_message_handler(handler.handle)
-
-            await self.tg_client.start(
-                phone, self._handle_telegram_code,
-                on_connected=lambda: self.bridge.connected.emit()
+    def _show_code_dialog(self, future):
+        code, ok = QInputDialog.getText(
+            None, "Código de verificación",
+            "Ingresa el código enviado a Telegram:"
+        )
+        if ok and code:
+            self._loop.call_soon_threadsafe(lambda: future.set_result(code))
+        else:
+            self._loop.call_soon_threadsafe(
+                lambda: future.set_exception(RuntimeError("Cancelled"))
             )
-
-        except Exception as e:
-            logger.error(f"Telegram error: {e}")
-
-    async def _handle_telegram_code(self) -> str:
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-
-        def show_dialog():
-            code, ok = QInputDialog.getText(
-                None, "Código de verificación",
-                "Ingresa el código enviado a Telegram:"
-            )
-            if ok and code:
-                loop.call_soon_threadsafe(lambda: future.set_result(code))
-            else:
-                loop.call_soon_threadsafe(lambda: future.set_exception(RuntimeError("Cancelled")))
-
-        QTimer.singleShot(0, show_dialog)
-        return await future
 
     def _show_login_dialog(self):
         api_id, ok = QInputDialog.getText(None, "API ID", "Ingresa tu API ID:")
@@ -234,24 +198,42 @@ class ChatHeadApp:
         phone, ok = QInputDialog.getText(None, "Teléfono", "Ingresa tu número (ej: +521234567890):")
         if not ok or not phone:
             return
-
         save_credentials(int(api_id), api_hash, phone)
-        self._start_telegram_async()
+        self._async(self._run_telegram())
+
+    async def _handle_telegram_code(self) -> str:
+        self._code_future = asyncio.get_running_loop().create_future()
+        self.bridge.code_requested.emit(self._code_future)
+        return await self._code_future
+
+    async def _run_telegram(self):
+        try:
+            creds = load_credentials()
+            if not creds:
+                logger.info("No credentials, requesting login...")
+                self.bridge.login_requested.emit()
+                return
+
+            phone = creds.get("phone", "")
+            handler = EventHandler(lambda d: self.bridge.message_received.emit(d))
+            self.tg_client.set_message_handler(handler.handle)
+
+            await self.tg_client.start(
+                phone,
+                self._handle_telegram_code,
+                on_connected=lambda: self.bridge.connected.emit(),
+            )
+        except Exception as e:
+            logger.error(f"Telegram error: {e}", exc_info=True)
 
     def _on_connected(self):
-        self._logged_in = True
         logger.info("Telegram connected, loading dialogs...")
-        asyncio.run_coroutine_threadsafe(self._do_fetch_dialogs(), self._loop)
+        self._async(self._do_fetch_dialogs())
 
     def _on_send_message(self, chat_id: int, text: str):
-        asyncio.run_coroutine_threadsafe(
-            self._do_send_message(chat_id, text), self._loop
-        )
-
-        msg = Message(
-            id=0, chat_id=chat_id, sender_id=0,
-            text=text, date=datetime.now(), out=True,
-        )
+        self._async(self._do_send_message(chat_id, text))
+        msg = Message(id=0, chat_id=chat_id, sender_id=0,
+                      text=text, date=datetime.now(), out=True)
         self.panel.add_message(msg)
         if chat_id in self._chats:
             self._chats[chat_id].last_message = text
@@ -264,8 +246,9 @@ class ChatHeadApp:
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
 
-    def _start_telegram_async(self):
-        asyncio.run_coroutine_threadsafe(self._run_telegram(), self._loop)
+    def _async(self, coro):
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     def _persist_state(self):
         self.state.x = self.bubble.x()
@@ -279,22 +262,15 @@ class ChatHeadApp:
         self._loop.run_forever()
 
     def run(self):
-        self._thread = threading.Thread(target=self._run_async_loop, daemon=True)
-        self._thread.start()
-
+        thread = threading.Thread(target=self._run_async_loop, daemon=True)
+        thread.start()
         while self._loop is None:
             pass
-
         exit_code = self.app.exec()
-        self._cleanup()
-        sys.exit(exit_code)
-
-    def _cleanup(self):
         if self._loop and not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(
-                self.tg_client.disconnect(), self._loop
-            )
+            self._async(self.tg_client.disconnect())
             self._loop.call_soon_threadsafe(self._loop.stop)
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":
