@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QMenu, QGraphicsDropShadowEffect, QGraphicsBlurEffect
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QPropertyAnimation, QTimer, QEasingCurve
+from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import (
     QPainter, QColor, QRadialGradient, QFont, QMouseEvent,
-    QPaintEvent, QLinearGradient, QPen, QBrush, QPainterPath,
+    QPaintEvent, QLinearGradient, QPen, QBrush,
 )
 from .styles import DANGER, FONT
 
