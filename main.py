@@ -76,7 +76,7 @@ class ChatHeadApp:
         target = self.bubble.pos()
         panel_x = target.x() - 390
         panel_y = max(50, target.y() - 240)
-        self.panel.slide_in(QPoint(panel_x, panel_y))
+        self.panel.show_panel(QPoint(panel_x, panel_y))
 
         chat = self._get_active_chat()
         if chat:
@@ -85,7 +85,7 @@ class ChatHeadApp:
         self._persist_state()
 
     def _close_panel(self):
-        self.panel.slide_out()
+        self.panel.hide_panel()
         self.state.panel_open = False
         self._persist_state()
 
